@@ -1,28 +1,13 @@
-"use client";
-
-import { useEffect, useState } from "react";
-
 /**
  * The workshop's "proof" widget.
  *
- * `performance.timeOrigin` is set once, when the browser loads the HTML
- * document. Soft navigations (login, signup, logout) leave it unchanged.
- * Only a real full page reload resets it. Since this badge lives in the
- * root layout, it stays mounted across every auth transition.
+ * It shows the timestamp the server rendered this document at. Every click,
+ * refresh, login and logout lands on a brand-new document, so the time
+ * changes every time — there is no client-side navigation anywhere in this
+ * app. The value is computed per request in the root layout, so it is baked
+ * into the HTML and identical after hydration.
  */
-export function ZeroReloadBadge() {
-  const [loadedAt, setLoadedAt] = useState<string | null>(null);
-
-  useEffect(() => {
-    setLoadedAt(
-      new Date(performance.timeOrigin).toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      }),
-    );
-  }, []);
-
+export function ZeroReloadBadge({ loadedAt }: { loadedAt: string }) {
   return (
     <div
       id="zero-reload-badge"
@@ -30,7 +15,7 @@ export function ZeroReloadBadge() {
       className="hidden items-center gap-2 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-secondary sm:inline-flex"
     >
       <span className="h-1.5 w-1.5 rounded-full bg-success" />
-      Page loaded <span className="font-mono text-foreground">{loadedAt ?? "--:--:--"}</span>
+      Page loaded <span className="font-mono text-foreground">{loadedAt}</span>
     </div>
   );
 }

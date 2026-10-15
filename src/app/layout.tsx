@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { ThemeProvider } from "next-themes";
 import { AuthProvider } from "@/context/AuthProvider";
 import { getCurrentUser } from "@/lib/supabase/user";
+import { formatClockTime } from "@/lib/format";
 import { Navbar } from "@/components/ui/Navbar";
 import { Background } from "@/components/ui/Background";
 import "./globals.css";
@@ -20,10 +21,9 @@ export const metadata: Metadata = {
 /**
  * Root layout: rendered on the server for every request.
  *
- * It reads the verified user once and hands it to <AuthProvider>.
- * After a login/logout Server Action, Next re-renders this layout on the
- * server and streams the new `initialUser` into the page that's already
- * open, without reloading it.
+ * It reads the verified user once and hands it to <AuthProvider>. Every
+ * navigation and every auth action is a full document load, so this layout
+ * (and the "Page loaded" timestamp it renders) is re-created fresh each time.
  *
  * <ThemeProvider> owns light/dark/system (persisted in localStorage). The
  * proxy's CSP nonce is forwarded so its no-flash inline script passes
@@ -32,6 +32,9 @@ export const metadata: Metadata = {
 export default async function RootLayout({ children }: { children: React.ReactNode }) {
   const user = await getCurrentUser();
   const nonce = (await headers()).get("x-nonce") ?? undefined;
+  // Server-rendered once per request; the badge below proves each navigation
+  // is a real document load.
+  const loadedAt = formatClockTime(new Date());
 
   return (
     <html lang="en" suppressHydrationWarning className={`${geistSans.variable} ${geistMono.variable}`}>
@@ -39,7 +42,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange nonce={nonce}>
           <Background />
           <AuthProvider initialUser={user}>
-            <Navbar />
+            <Navbar loadedAt={loadedAt} />
             <main className="mx-auto max-w-6xl px-5">{children}</main>
           </AuthProvider>
         </ThemeProvider>

@@ -1,28 +1,23 @@
 "use client";
 
-import Link from "next/link";
-import { useActionState, useEffect, useRef, useState } from "react";
-import { signIn, signUp, type AuthFormState } from "@/app/(auth)/actions";
-import { Spinner } from "@/components/ui/Spinner";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * One form component handles both login and signup.
  *
- * `useActionState` wires the form to a Server Action:
- * - The browser submits with fetch, not a full-page POST.
- * - `isPending` drives the loading UI.
- * - Returned errors re-render in place. On success the action returns
- *   `navigateTo` and we hard-navigate with window.location, so auth
- *   intentionally does a full page load.
+ * Both modes submit as native HTML forms to the /api/auth route handlers:
+ * a real document POST with no fetch, no useActionState and no client-side
+ * error state. The handler ends in a redirect, so the browser leaves this
+ * document and loads the next one. Errors come back on that next document
+ * as `?error=...` query params and are rendered server-side.
  */
 type Mode = "login" | "signup";
 
-const COPY: Record<Mode, { title: string; subtitle: string; cta: string; pending: string; alt: string; altHref: string; altCta: string }> = {
+const COPY: Record<Mode, { title: string; subtitle: string; cta: string; alt: string; altHref: string; altCta: string }> = {
   login: {
     title: "Welcome back",
     subtitle: "Log in to your dashboard.",
     cta: "Log in",
-    pending: "Signing in…",
     alt: "New here?",
     altHref: "/signup",
     altCta: "Create an account",
@@ -31,71 +26,70 @@ const COPY: Record<Mode, { title: string; subtitle: string; cta: string; pending
     title: "Create your account",
     subtitle: "Sign up and land on your dashboard instantly.",
     cta: "Create account",
-    pending: "Creating account…",
     alt: "Already have an account?",
     altHref: "/login",
     altCta: "Log in",
   },
 };
 
-export function AuthForm({ mode }: { mode: Mode }) {
-  const action = mode === "login" ? signIn : signUp;
-  const [state, formAction, isPending] = useActionState<AuthFormState, FormData>(action, {});
+export function AuthForm({
+  mode,
+  formError,
+  fieldErrors,
+}: {
+  mode: Mode;
+  /** Server-rendered error for the whole form (from `?error=...`). */
+  formError?: string;
+  /** Server-rendered per-field errors (from `?error=...`). */
+  fieldErrors?: Partial<Record<"email" | "password", string>>;
+}) {
   const [showPassword, setShowPassword] = useState(false);
   const copy = COPY[mode];
-
-  // Full page load on success — intentional for auth actions.
-  useEffect(() => {
-    if (state.navigateTo) window.location.assign(state.navigateTo);
-  }, [state.navigateTo]);
 
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
-  // After a failed attempt, put the cursor where the fix is needed. The email
-  // is preserved (state.email repopulates it), so a wrong password only ever
-  // needs the password retyped.
-  useEffect(() => {
-    if (state.fieldErrors?.email) emailRef.current?.focus();
-    else if (state.error || state.fieldErrors?.password) passwordRef.current?.focus();
-  }, [state]);
-
-  // Auth pages are served no-store, so browsers don't restore form values on
-  // their own. Remember the attempted email for this tab and prefill it after
-  // any reload, so a failed login never asks for the email again.
-  useEffect(() => {
-    if (state.email) {
-      try { window.sessionStorage.setItem("auth:last-email", state.email); } catch {}
-    }
-  }, [state.email]);
-
-  // Deliberate 7-second empty window after a reload: the form looks blank at
-  // first, then the remembered email fills itself in (measured from page load,
-  // so slow hydration doesn't stretch it). Change 7000 to tune the delay.
+  // Every failed attempt comes back as a fresh document, so the fields are
+  // empty. Remember the attempted email for this tab on submit, then put it
+  // back as soon as the page loads — a failed login never asks for the email
+  // again, and the retry only needs the password.
   useEffect(() => {
     const el = emailRef.current;
     if (!el || el.value) return;
-
-    let remembered: string | null = null;
     try {
-      remembered = window.sessionStorage.getItem("auth:last-email");
+      const remembered = window.sessionStorage.getItem("auth:last-email");
+      if (remembered) el.value = remembered;
     } catch {}
-    if (!remembered) return;
-    const email = remembered;
-
-    const timer = window.setTimeout(() => {
-      if (emailRef.current && !emailRef.current.value) emailRef.current.value = email;
-    }, Math.max(0, 7000 - (Date.now() - performance.timeOrigin)));
-    return () => window.clearTimeout(timer);
   }, []);
+
+  // After a failed attempt, put the cursor where the fix is needed.
+  useEffect(() => {
+    if (fieldErrors?.email) emailRef.current?.focus();
+    else if (formError || fieldErrors?.password) passwordRef.current?.focus();
+  }, [formError, fieldErrors]);
+
+  function rememberEmail(event: React.FormEvent<HTMLFormElement>) {
+    const value = (event.currentTarget.elements.namedItem("email") as HTMLInputElement | null)?.value;
+    if (!value) return;
+    try {
+      window.sessionStorage.setItem("auth:last-email", value);
+    } catch {}
+  }
 
   return (
     <div className="w-full max-w-[420px] rounded-card border border-border bg-surface p-8 sm:p-10">
       <h1 className="text-2xl font-semibold tracking-[-0.02em] text-foreground">{copy.title}</h1>
       <p className="mt-2 text-sm leading-relaxed text-secondary">{copy.subtitle}</p>
 
-      <form id={`${mode}-form`} action={formAction} className="mt-8 space-y-6" noValidate>
-        <Field label="Email" htmlFor="email" error={state.fieldErrors?.email}>
+      <form
+        id={`${mode}-form`}
+        action={`/api/auth/${mode}`}
+        method="POST"
+        onSubmit={rememberEmail}
+        className="mt-8 space-y-6"
+        noValidate
+      >
+        <Field label="Email" htmlFor="email" error={fieldErrors?.email}>
           <input
             id="email"
             name="email"
@@ -103,11 +97,10 @@ export function AuthForm({ mode }: { mode: Mode }) {
             autoComplete="email"
             required
             placeholder="you@company.com"
-            defaultValue={state.email}
             ref={emailRef}
-            autoFocus={Boolean(state.fieldErrors?.email)}
-            aria-invalid={Boolean(state.fieldErrors?.email)}
-            aria-describedby={state.fieldErrors?.email ? "email-error" : undefined}
+            autoFocus={Boolean(fieldErrors?.email)}
+            aria-invalid={Boolean(fieldErrors?.email)}
+            aria-describedby={fieldErrors?.email ? "email-error" : undefined}
             className="input"
           />
         </Field>
@@ -115,7 +108,7 @@ export function AuthForm({ mode }: { mode: Mode }) {
         <Field
           label="Password"
           htmlFor="password"
-          error={state.fieldErrors?.password}
+          error={fieldErrors?.password}
           hint={mode === "signup" ? "At least 8 characters." : undefined}
         >
           <div className="relative">
@@ -129,9 +122,9 @@ export function AuthForm({ mode }: { mode: Mode }) {
               maxLength={128}
               placeholder="••••••••"
               ref={passwordRef}
-              autoFocus={Boolean(state.error || state.fieldErrors?.password)}
-              aria-invalid={Boolean(state.fieldErrors?.password)}
-              aria-describedby={state.fieldErrors?.password ? "password-error" : undefined}
+              autoFocus={Boolean(formError || fieldErrors?.password)}
+              aria-invalid={Boolean(fieldErrors?.password)}
+              aria-describedby={fieldErrors?.password ? "password-error" : undefined}
               className="input pr-16"
             />
             <button
@@ -146,27 +139,30 @@ export function AuthForm({ mode }: { mode: Mode }) {
           </div>
         </Field>
 
-        {state.error && (
+        {formError && (
           <p
             id="form-error"
             role="alert"
             className="rounded-field border border-danger/40 bg-danger/5 px-3.5 py-3 text-sm text-danger"
           >
-            {state.error}
+            {formError}
           </p>
         )}
 
-        <button id={`${mode}-submit`} type="submit" disabled={isPending} className="btn-primary w-full">
-          {isPending && <Spinner />}
-          {isPending ? copy.pending : copy.cta}
+        <button id={`${mode}-submit`} type="submit" className="btn-primary w-full">
+          {copy.cta}
         </button>
       </form>
 
       <p className="mt-8 text-center text-sm text-secondary">
         {copy.alt}{" "}
-        <Link id={`${mode}-alt-link`} href={copy.altHref} className="font-medium text-accent-text transition-colors duration-150 hover:text-foreground">
+        <a
+          id={`${mode}-alt-link`}
+          href={copy.altHref}
+          className="font-medium text-accent-text transition-colors duration-150 hover:text-foreground"
+        >
           {copy.altCta}
-        </Link>
+        </a>
       </p>
     </div>
   );
