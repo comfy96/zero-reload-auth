@@ -7,19 +7,6 @@ export function maskEmail(email: string): string {
 }
 
 /**
- * The "Page loaded" badge clock, e.g. "03:22:00 PM". Rendered on the server
- * (per request) so the value is baked into the HTML and identical after
- * hydration. Pinned to en-US so server and client always agree.
- */
-export function formatClockTime(date: Date): string {
-  return new Intl.DateTimeFormat("en-US", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  }).format(date);
-}
-
-/**
  * Formats in the runtime's local time zone (the server's clock for the
  * dashboard, which the user sees). Do not pin UTC here: it made "Last
  * sign-in" an hour off from the local time shown in the nav badge.

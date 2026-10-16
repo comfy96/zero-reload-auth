@@ -1,9 +1,9 @@
 import { z } from "zod";
 
 /**
- * Validated on the server inside the /api/auth route handlers. Never trust
- * what the client sends. Password rules follow modern guidance: long enough,
- * no forced character classes, and a high upper limit.
+ * Validated on the server inside the Server Actions. Never trust what the
+ * client sends. Password rules follow modern guidance: long enough, no
+ * forced character classes, and a high upper limit.
  */
 const email = z
   .string()
