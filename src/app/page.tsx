@@ -1,4 +1,3 @@
-import Link from "next/link";
 import { getCurrentUser } from "@/lib/supabase/user";
 
 const FEATURES = [
@@ -26,17 +25,17 @@ export default async function HomePage() {
 
       <div className="mt-10 flex flex-wrap justify-center gap-3">
         {user ? (
-          <Link id="cta-dashboard" href="/dashboard" className="btn-primary">
+          <a id="cta-dashboard" href="/dashboard" className="btn-primary">
             Go to dashboard →
-          </Link>
+          </a>
         ) : (
           <>
-            <Link id="cta-signup" href="/signup" className="btn-primary">
+            <a id="cta-signup" href="/signup" className="btn-primary">
               Get started →
-            </Link>
-            <Link id="cta-login" href="/login" className="btn-secondary">
+            </a>
+            <a id="cta-login" href="/login" className="btn-secondary">
               I have an account
-            </Link>
+            </a>
           </>
         )}
       </div>

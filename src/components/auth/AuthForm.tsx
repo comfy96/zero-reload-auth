@@ -1,28 +1,23 @@
 "use client";
 
-import Link from "next/link";
-import { useActionState, useEffect, useRef, useState } from "react";
-import { useFormStatus } from "react-dom";
-import { signIn, signUp, type AuthFormState } from "@/app/(auth)/actions";
-import { Spinner } from "@/components/ui/Spinner";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * One form component handles both login and signup.
  *
- * `useActionState` wires the form to a Server Action (submitted with fetch,
- * not a full-page POST) and `useFormStatus` drives the pending UI: the
- * button shows the pending label with a spinner, and the inputs disable.
- * Success ends with redirect() inside the action — a soft navigation.
- * Errors are returned state and render inline, preserving the email.
+ * Both modes submit as native HTML forms to the /api/auth route handlers:
+ * a real document POST with no fetch, no useActionState and no client-side
+ * error state. The handler ends in a redirect, so the browser leaves this
+ * document and loads the next one. Errors come back on that next document
+ * as `?error=...` query params and are rendered server-side.
  */
 type Mode = "login" | "signup";
 
-const COPY: Record<Mode, { title: string; subtitle: string; cta: string; pending: string; alt: string; altHref: string; altCta: string }> = {
+const COPY: Record<Mode, { title: string; subtitle: string; cta: string; alt: string; altHref: string; altCta: string }> = {
   login: {
     title: "Welcome back",
     subtitle: "Log in to your dashboard.",
     cta: "Log in",
-    pending: "Logging in…",
     alt: "New here?",
     altHref: "/signup",
     altCta: "Create an account",
@@ -31,33 +26,33 @@ const COPY: Record<Mode, { title: string; subtitle: string; cta: string; pending
     title: "Create your account",
     subtitle: "Sign up and land on your dashboard instantly.",
     cta: "Create account",
-    pending: "Creating account…",
     alt: "Already have an account?",
     altHref: "/login",
     altCta: "Log in",
   },
 };
 
-export function AuthForm({ mode }: { mode: Mode }) {
-  const action = mode === "login" ? signIn : signUp;
-  const [state, formAction] = useActionState<AuthFormState, FormData>(action, {});
+export function AuthForm({
+  mode,
+  formError,
+  fieldErrors,
+}: {
+  mode: Mode;
+  /** Server-rendered error for the whole form (from `?error=...`). */
+  formError?: string;
+  /** Server-rendered per-field errors (from `?error=...`). */
+  fieldErrors?: Partial<Record<"email" | "password", string>>;
+}) {
   const [showPassword, setShowPassword] = useState(false);
   const copy = COPY[mode];
 
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
 
-  // After a failed attempt, put the cursor where the fix is needed. The email
-  // is preserved (state.email repopulates it), so a wrong password only ever
-  // needs the password retyped.
-  useEffect(() => {
-    if (state.fieldErrors?.email) emailRef.current?.focus();
-    else if (state.error || state.fieldErrors?.password) passwordRef.current?.focus();
-  }, [state]);
-
-  // A soft navigation away and back remounts this form empty. Remember the
-  // attempted email for this tab and prefill it, so a failed login never
-  // asks for the email again.
+  // Every failed attempt comes back as a fresh document, so the fields are
+  // empty. Remember the attempted email for this tab on submit, then put it
+  // back as soon as the page loads — a failed login never asks for the email
+  // again, and the retry only needs the password.
   useEffect(() => {
     const el = emailRef.current;
     if (!el || el.value) return;
@@ -66,6 +61,12 @@ export function AuthForm({ mode }: { mode: Mode }) {
       if (remembered) el.value = remembered;
     } catch {}
   }, []);
+
+  // After a failed attempt, put the cursor where the fix is needed.
+  useEffect(() => {
+    if (fieldErrors?.email) emailRef.current?.focus();
+    else if (formError || fieldErrors?.password) passwordRef.current?.focus();
+  }, [formError, fieldErrors]);
 
   function rememberEmail(event: React.FormEvent<HTMLFormElement>) {
     const value = (event.currentTarget.elements.namedItem("email") as HTMLInputElement | null)?.value;
@@ -80,124 +81,90 @@ export function AuthForm({ mode }: { mode: Mode }) {
       <h1 className="text-2xl font-semibold tracking-[-0.02em] text-foreground">{copy.title}</h1>
       <p className="mt-2 text-sm leading-relaxed text-secondary">{copy.subtitle}</p>
 
-      <form id={`${mode}-form`} action={formAction} onSubmit={rememberEmail} className="mt-8 space-y-6" noValidate>
-        <FormFields
-          mode={mode}
-          state={state}
-          showPassword={showPassword}
-          onTogglePassword={() => setShowPassword((v) => !v)}
-          emailRef={emailRef}
-          passwordRef={passwordRef}
-        />
+      <form
+        id={`${mode}-form`}
+        action={`/api/auth/${mode}`}
+        method="POST"
+        onSubmit={rememberEmail}
+        className="mt-8 space-y-6"
+        noValidate
+      >
+        <Field label="Email" htmlFor="email" error={fieldErrors?.email}>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            autoComplete="email"
+            required
+            placeholder="you@company.com"
+            ref={emailRef}
+            autoFocus={Boolean(fieldErrors?.email)}
+            aria-invalid={Boolean(fieldErrors?.email)}
+            aria-describedby={fieldErrors?.email ? "email-error" : undefined}
+            className="input"
+          />
+        </Field>
+
+        <Field
+          label="Password"
+          htmlFor="password"
+          error={fieldErrors?.password}
+          hint={mode === "signup" ? "At least 8 characters." : undefined}
+        >
+          <div className="relative">
+            <input
+              id="password"
+              name="password"
+              type={showPassword ? "text" : "password"}
+              autoComplete={mode === "login" ? "current-password" : "new-password"}
+              required
+              minLength={mode === "signup" ? 8 : undefined}
+              maxLength={128}
+              placeholder="••••••••"
+              ref={passwordRef}
+              autoFocus={Boolean(formError || fieldErrors?.password)}
+              aria-invalid={Boolean(fieldErrors?.password)}
+              aria-describedby={fieldErrors?.password ? "password-error" : undefined}
+              className="input pr-16"
+            />
+            <button
+              id="toggle-password"
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute inset-y-0 right-1.5 my-auto h-8 rounded-md px-2 text-xs font-medium text-secondary transition-colors duration-150 hover:text-foreground"
+              aria-label={showPassword ? "Hide password" : "Show password"}
+            >
+              {showPassword ? "Hide" : "Show"}
+            </button>
+          </div>
+        </Field>
+
+        {formError && (
+          <p
+            id="form-error"
+            role="alert"
+            className="rounded-field border border-danger/40 bg-danger/5 px-3.5 py-3 text-sm text-danger"
+          >
+            {formError}
+          </p>
+        )}
+
+        <button id={`${mode}-submit`} type="submit" className="btn-primary w-full">
+          {copy.cta}
+        </button>
       </form>
 
       <p className="mt-8 text-center text-sm text-secondary">
         {copy.alt}{" "}
-        <Link
+        <a
           id={`${mode}-alt-link`}
           href={copy.altHref}
           className="font-medium text-accent-text transition-colors duration-150 hover:text-foreground"
         >
           {copy.altCta}
-        </Link>
+        </a>
       </p>
     </div>
-  );
-}
-
-/**
- * The fields live in a child of the <form> so `useFormStatus()` can report
- * the pending state of the surrounding submission.
- */
-function FormFields({
-  mode,
-  state,
-  showPassword,
-  onTogglePassword,
-  emailRef,
-  passwordRef,
-}: {
-  mode: Mode;
-  state: AuthFormState;
-  showPassword: boolean;
-  onTogglePassword: () => void;
-  emailRef: React.RefObject<HTMLInputElement | null>;
-  passwordRef: React.RefObject<HTMLInputElement | null>;
-}) {
-  const { pending } = useFormStatus();
-  const copy = COPY[mode];
-
-  return (
-    <>
-      <Field label="Email" htmlFor="email" error={state.fieldErrors?.email}>
-        <input
-          id="email"
-          name="email"
-          type="email"
-          autoComplete="email"
-          required
-          placeholder="you@company.com"
-          defaultValue={state.email}
-          ref={emailRef}
-          disabled={pending}
-          autoFocus={Boolean(state.fieldErrors?.email)}
-          aria-invalid={Boolean(state.fieldErrors?.email)}
-          aria-describedby={state.fieldErrors?.email ? "email-error" : undefined}
-          className="input"
-        />
-      </Field>
-
-      <Field
-        label="Password"
-        htmlFor="password"
-        error={state.fieldErrors?.password}
-        hint={mode === "signup" ? "At least 8 characters." : undefined}
-      >
-        <div className="relative">
-          <input
-            id="password"
-            name="password"
-            type={showPassword ? "text" : "password"}
-            autoComplete={mode === "login" ? "current-password" : "new-password"}
-            required
-            minLength={mode === "signup" ? 8 : undefined}
-            maxLength={128}
-            placeholder="••••••••"
-            ref={passwordRef}
-            disabled={pending}
-            autoFocus={Boolean(state.error || state.fieldErrors?.password)}
-            aria-invalid={Boolean(state.fieldErrors?.password)}
-            aria-describedby={state.fieldErrors?.password ? "password-error" : undefined}
-            className="input pr-16"
-          />
-          <button
-            id="toggle-password"
-            type="button"
-            onClick={onTogglePassword}
-            disabled={pending}
-            className="absolute inset-y-0 right-1.5 my-auto h-8 rounded-md px-2 text-xs font-medium text-secondary transition-colors duration-150 hover:text-foreground"
-            aria-label={showPassword ? "Hide password" : "Show password"}
-          >
-            {showPassword ? "Hide" : "Show"}
-          </button>
-        </div>
-      </Field>
-
-      {state.error && (
-        <p
-          id="form-error"
-          role="alert"
-          className="rounded-field border border-danger/40 bg-danger/5 px-3.5 py-3 text-sm text-danger"
-        >
-          {state.error}
-        </p>
-      )}
-
-      <button id={`${mode}-submit`} type="submit" disabled={pending} className="btn-primary w-full">
-        {pending && <Spinner />}
-        {pending ? copy.pending : copy.cta}
-      </button>
-    </>
   );
 }
 

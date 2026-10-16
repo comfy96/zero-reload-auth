@@ -1,17 +1,15 @@
 "use client";
 
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useMemo } from "react";
 
 /**
  * AuthProvider: the client-side mirror of the auth state.
  *
  * The server stays the source of truth. The root layout reads the user
- * (from the cookie, checked by Supabase) and passes the minimum public fields
- * down as `initialUser`. Every login, signup or logout re-renders the layout
- * through a soft navigation, so this prop updates without a page reload.
- *
- * `clearUser()` lets the logout button blank the UI *instantly*, before the
- * server round trip has finished (an optimistic update).
+ * (from the cookie, verified by Supabase) and passes the minimum public
+ * fields down as `initialUser`. Every navigation and auth action is a full
+ * page load, so this provider is re-created from fresh server data on every
+ * document — there is no in-place update and no optimistic state.
  */
 export type AuthUser = {
   id: string;
@@ -23,7 +21,6 @@ export type AuthUser = {
 type AuthContextValue = {
   user: AuthUser | null;
   isAuthenticated: boolean;
-  clearUser: () => void;
 };
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -35,16 +32,9 @@ export function AuthProvider({
   initialUser: AuthUser | null;
   children: React.ReactNode;
 }) {
-  const [user, setUser] = useState<AuthUser | null>(initialUser);
-
-  // Re-sync whenever the server sends a new user (login, signup, logout).
-  useEffect(() => setUser(initialUser), [initialUser]);
-
-  const clearUser = useCallback(() => setUser(null), []);
-
   const value = useMemo(
-    () => ({ user, isAuthenticated: user !== null, clearUser }),
-    [user, clearUser],
+    () => ({ user: initialUser, isAuthenticated: initialUser !== null }),
+    [initialUser],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
