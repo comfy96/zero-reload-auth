@@ -1,16 +1,30 @@
+"use client";
+
+import { signOut } from "@/app/(auth)/actions";
+import { useAuth } from "@/context/AuthProvider";
+
 /**
- * Logout: a native form POST to the /api/auth/logout route handler.
- *
- * The handler revokes the Supabase session and clears the auth cookies,
- * then redirects to /login — the browser leaves this document entirely.
- * No client state and no optimistic UI: the session dies with the page.
+ * Logout, without reloading — and with an instant navbar switch:
+ * 1. clearUser() is an urgent update, so the navbar swaps to Log in /
+ *    Sign up on the very next frame (optimistic).
+ * 2. signOut() runs the Server Action: it ends the Supabase session, clears
+ *    the auth cookies on the response, then redirect()s to /login — a soft
+ *    navigation inside the same document.
  */
 export function LogoutButton() {
+  const { clearUser } = useAuth();
+
   return (
-    <form action="/api/auth/logout" method="POST" className="inline-flex">
-      <button id="logout-button" type="submit" className="btn-secondary px-4">
-        Log out
-      </button>
-    </form>
+    <button
+      id="logout-button"
+      type="button"
+      className="btn-secondary px-4"
+      onClick={() => {
+        clearUser();
+        void signOut();
+      }}
+    >
+      Log out
+    </button>
   );
 }
