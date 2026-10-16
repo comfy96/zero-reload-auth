@@ -1,50 +1,51 @@
 "use client";
 
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useAuth } from "@/context/AuthProvider";
 import { LogoutButton } from "@/components/auth/LogoutButton";
 import { ZeroReloadBadge } from "@/components/ui/ZeroReloadBadge";
 
 /**
- * Lives in the root layout. Links are plain <a> tags on purpose: every
- * click is a full document load (no prefetching, no client-side routing),
- * so the navbar never swaps its contents in place.
+ * Lives in the root layout, so it is never unmounted: soft navigations swap
+ * only the page below it, and its contents switch based on the AuthProvider
+ * state — Log in / Sign up, or the user menu.
  */
-export function Navbar({ loadedAt }: { loadedAt: string }) {
+export function Navbar() {
   const { user } = useAuth();
   const pathname = usePathname();
 
   return (
     <header className="sticky top-0 z-20 border-b border-border bg-background">
       <nav className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-5">
-        <a id="nav-home" href="/" className="flex items-center gap-2.5">
+        <Link id="nav-home" href="/" className="flex items-center gap-2.5">
           <span className="grid h-8 w-8 place-items-center rounded-field bg-foreground text-sm font-bold text-background">
             Z
           </span>
           <span className="text-[15px] font-semibold tracking-[-0.01em] text-foreground">
             Zero Reload <span className="text-muted">Auth</span>
           </span>
-        </a>
+        </Link>
 
         <div className="flex items-center gap-2.5">
-          <ZeroReloadBadge loadedAt={loadedAt} />
+          <ZeroReloadBadge />
           {user ? (
             <>
               {pathname !== "/dashboard" && (
-                <a id="nav-dashboard" href="/dashboard" className="btn-secondary px-4">
+                <Link id="nav-dashboard" href="/dashboard" className="btn-secondary px-4">
                   Dashboard
-                </a>
+                </Link>
               )}
               <LogoutButton />
             </>
           ) : (
             <>
-              <a id="nav-login" href="/login" className="btn-secondary px-4">
+              <Link id="nav-login" href="/login" className="btn-secondary px-4">
                 Log in
-              </a>
-              <a id="nav-signup" href="/signup" className="btn-primary px-4">
+              </Link>
+              <Link id="nav-signup" href="/signup" className="btn-primary px-4">
                 Sign up
-              </a>
+              </Link>
             </>
           )}
         </div>

@@ -39,8 +39,10 @@ export async function updateSession(
       setAll(cookiesToSet) {
         cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
         response = next();
+        // Match the server adapter: tokens are HttpOnly (the app has no
+        // browser Supabase client that would need to read them).
         cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options),
+          response.cookies.set(name, value, { ...options, httpOnly: true }),
         );
       },
     },

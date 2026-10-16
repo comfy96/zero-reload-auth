@@ -20,8 +20,12 @@ export async function createClient() {
       },
       setAll(cookiesToSet) {
         try {
+          // HttpOnly: the app never reads these tokens in the browser, so
+          // nothing client-side needs to see them. (@supabase/ssr defaults
+          // to httpOnly: false to support apps with a browser client; ours
+          // has none.)
           cookiesToSet.forEach(({ name, value, options }) =>
-            cookieStore.set(name, value, options),
+            cookieStore.set(name, value, { ...options, httpOnly: true }),
           );
         } catch {
           // Server Components can't write cookies. That's fine: the
